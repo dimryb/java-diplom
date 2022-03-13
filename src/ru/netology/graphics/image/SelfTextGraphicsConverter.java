@@ -1,5 +1,4 @@
 package ru.netology.graphics.image;
-
 import javax.imageio.ImageIO;
 import java.awt.*;
 import java.awt.image.BufferedImage;
@@ -8,19 +7,39 @@ import java.io.IOException;
 import java.net.URL;
 
 public class SelfTextGraphicsConverter implements TextGraphicsConverter {
-    private int maxWidth = -1;
-    private int maxHeight = -1;
+    private int maxWidth = 0;
+    private int maxHeight = 0;
+    private double maxRatio = 0;
     private TextColorSchema schema = new WindTextColorSchema();
+
+    /**
+     * Рассчитывает на сколько нужно поделить измерение чтобы не превышать максимум
+     * @param dimension - значение измерение
+     * @param maxDimension - максимальное значение измерения
+     * @return делитель измерения
+     */
+    private double calcDividerDimension(int dimension, int maxDimension){
+        double divider = 1;
+        if (maxDimension > 0){
+            if (dimension > maxDimension) {
+                divider = (double) dimension / maxDimension;
+            }
+        }
+        return divider;
+    }
 
     @Override
     public String convert(String url) throws IOException, BadImageSizeException {
         // Вот так просто мы скачаем картинку из интернета :)
         BufferedImage img = ImageIO.read(new URL(url));
-
-        // Если конвертер попросили проверять на максимально допустимое
-        // соотношение сторон изображения, то вам здесь надо сделать эту проверку,
-        // и, если картинка не подходит, выбросить исключение BadImageSizeException.
-        // Чтобы получить ширину картинки, вызовите img.getWidth(), высоту - img.getHeight()
+        int imgWidth = img.getWidth();
+        int imgHeight = img.getHeight();
+        if (maxRatio > 0){
+            double ratio = (imgWidth > imgHeight) ? (double)imgWidth/imgHeight : (double) imgHeight/imgWidth;
+            if (ratio > maxRatio){
+                throw new BadImageSizeException(ratio, maxRatio);
+            }
+        }
 
         // Если конвертеру выставили максимально допустимые ширину и/или высоту,
         // вам надо по ним и по текущим высоте и ширине вычислить новые высоту
@@ -33,8 +52,11 @@ public class SelfTextGraphicsConverter implements TextGraphicsConverter {
         // будет 100x10 (в 1.5 раза меньше).
         // Подумайте, какими действиями можно вычислить новые размеры.
         // Не получается? Спросите вашего руководителя по курсовой, поможем!
-        int newWidth = img.getWidth();
-        int newHeight = img.getHeight();
+        double dividerWidth = calcDividerDimension(imgWidth, maxWidth);
+        double dividerHeight = calcDividerDimension(imgHeight, maxHeight);
+        double divider = (dividerWidth > dividerHeight) ? dividerWidth : dividerHeight;
+        int newWidth = (int) (imgWidth / divider);
+        int newHeight = (int) (imgHeight / divider);
 
         // Теперь нам надо попросить картинку изменить свои размеры на новые.
         // Последний параметр означает, что мы просим картинку плавно сузиться
@@ -62,41 +84,17 @@ public class SelfTextGraphicsConverter implements TextGraphicsConverter {
         // то для прохода по пикселям нам нужен будет этот инструмент:
         WritableRaster bwRaster = bwImg.getRaster();
 
-        // Он хорош тем, что у него мы можем спросить пиксель на нужных
-        // нам координатах, указав номер столбца (w) и строки (h)
-        // int color = bwRaster.getPixel(w, h, new int[3])[0];
-        // Выглядит странно? Согласен. Сам возвращаемый методом пиксель — это
-        // массив из трёх интов, обычно это интенсивность красного, зелёного и синего.
-        // Но у нашей чёрно-белой картинки цветов нет, и нас интересует
-        // только первое значение в массиве. Вы спросите, а зачем
-        // мы ещё параметром передаём интовый массив на три ячейки?
-        // Дело в том, что этот метод не хочет создавать его сам и просит
-        // вас сделать это, а сам метод лишь заполнит его и вернёт.
-        // Потому что создавать массивы каждый раз слишком медленно. Вы можете создать
-        // массив один раз, сохранить в переменную и передавать один
-        // и тот же массив в метод, ускорив тем самым программу.
-
-        // Вам осталось пробежаться двойным циклом по всем столбцам (ширина)
-        // и строкам (высота) изображения, на каждой внутренней итерации
-        // получить степень белого пикселя (int color выше) и по ней
-        // получить соответствующий символ c. Логикой превращения цвета
-        // в символ будет заниматься другой объект, который мы рассмотрим ниже
-        StringBuilder stringBuilder = new StringBuilder();
-        for (int w = 0; w < newWidth; w++){
-            for (int h = 0; h < newHeight; h++){
+        StringBuilder textGraphicBuilder = new StringBuilder();
+        for (int h = 0; h < newHeight; h++){
+            for (int w = 0; w < newWidth; w++){
                 int color = bwRaster.getPixel(w, h, new int[3])[0];
                 char c = schema.convert(color);
-                stringBuilder.append(c);//запоминаем символ c
-                stringBuilder.append(c);
+                textGraphicBuilder.append(c);//запоминаем символ c
+                textGraphicBuilder.append(c);
             }
-            stringBuilder.append("\n");
+            textGraphicBuilder.append("\n");
         }
-
-        // Осталось собрать все символы в один большой текст
-        // Для того, чтобы изображение не было слишком узким, рекомендую
-        // каждый пиксель превращать в два повторяющихся символа, полученных
-        // от схемы.
-        return stringBuilder.toString(); // Возвращаем собранный текст.
+        return textGraphicBuilder.toString(); // Возвращаем собранный текст.
     }
 
     @Override
@@ -111,11 +109,11 @@ public class SelfTextGraphicsConverter implements TextGraphicsConverter {
 
     @Override
     public void setMaxRatio(double maxRatio) {
-
+        this.maxRatio = maxRatio;
     }
 
     @Override
     public void setTextColorSchema(TextColorSchema schema) {
-
+        this.schema = schema;
     }
 }
